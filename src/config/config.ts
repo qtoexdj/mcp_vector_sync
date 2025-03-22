@@ -45,6 +45,13 @@ const configSchema = z.object({
 type Config = z.infer<typeof configSchema>;
 
 // Función para crear la configuración validada
+// Función auxiliar para convertir string a número con valor predeterminado
+function parseNumber(value: string | undefined, defaultValue: number): number {
+  if (!value) return defaultValue;
+  const parsed = Number(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
 function createConfig(): Config {
   try {
     return configSchema.parse({
@@ -54,17 +61,17 @@ function createConfig(): Config {
       },
       openai: {
         apiKey: process.env.OPENAI_API_KEY,
-        model: process.env.OPENAI_MODEL,
-        maxRetries: Number(process.env.MAX_RETRIES),
+        model: process.env.OPENAI_MODEL || 'text-embedding-ada-002',
+        maxRetries: parseNumber(process.env.MAX_RETRIES, 3),
       },
       monitor: {
-        interval: Number(process.env.MONITOR_INTERVAL),
-        batchSize: Number(process.env.BATCH_SIZE),
-        maxConcurrent: Number(process.env.MAX_CONCURRENT),
+        interval: parseNumber(process.env.MONITOR_INTERVAL, 60000),
+        batchSize: parseNumber(process.env.BATCH_SIZE, 50),
+        maxConcurrent: parseNumber(process.env.MAX_CONCURRENT, 3),
       },
       rateLimit: {
-        requestsPerMinute: Number(process.env.RATE_LIMIT_PER_TENANT),
-        concurrent: Number(process.env.CONCURRENT_REQUESTS),
+        requestsPerMinute: parseNumber(process.env.RATE_LIMIT_PER_TENANT, 100),
+        concurrent: parseNumber(process.env.CONCURRENT_REQUESTS, 5),
       },
       logging: {
         level: (process.env.LOG_LEVEL as any) || 'info',
