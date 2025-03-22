@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  vector-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-vector-sync
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-text-embedding-ada-002}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - MONITOR_INTERVAL=${MONITOR_INTERVAL:-60000}
+      - BATCH_SIZE=${BATCH_SIZE:-50}
+      - MAX_CONCURRENT=${MAX_CONCURRENT:-3}
+      - RATE_LIMIT_PER_TENANT=${RATE_LIMIT_PER_TENANT:-100}
+      - CONCURRENT_REQUESTS=${CONCURRENT_REQUESTS:-5}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
