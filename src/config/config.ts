@@ -23,7 +23,8 @@ const configSchema = z.object({
 
   // Monitor
   monitor: z.object({
-    interval: z.number().int().positive().default(10000),
+    // Intervalo alto por defecto ya que ahora el sistema usa principalmente webhooks
+    interval: z.number().int().positive().default(21600000), // 6 horas por defecto
     batchSize: z.number().int().positive().default(50),
     maxConcurrent: z.number().int().positive().default(3),
   }),
@@ -69,7 +70,9 @@ function createConfig(): Config {
         maxRetries: parseNumber(process.env.MAX_RETRIES, 3),
       },
       monitor: {
-        interval: parseNumber(process.env.MONITOR_INTERVAL, 60000),
+        // Intervalo largo por defecto (6 horas) para el modo de respaldo
+        // Se puede anular con la variable de entorno MONITOR_INTERVAL
+        interval: parseNumber(process.env.MONITOR_INTERVAL, 21600000), // 6 horas (21600000 ms)
         batchSize: parseNumber(process.env.BATCH_SIZE, 50),
         maxConcurrent: parseNumber(process.env.MAX_CONCURRENT, 3),
       },

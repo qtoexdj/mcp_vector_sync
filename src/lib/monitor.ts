@@ -65,6 +65,47 @@ export class MonitorService {
     await this.processTenantChanges(tenantId);
   }
 
+  /**
+   * Procesa un proyecto específico dado su ID y el ID del tenant
+   * Este método es utilizado cuando se recibe una notificación via webhook
+   */
+  async processProject(tenantId: string, projectId: string): Promise<void> {
+    logger.info({ tenantId, projectId }, 'Procesando proyecto específico por webhook');
+    
+    try {
+      const status = this.getOrCreateStatus(tenantId);
+      
+      // En modo demo, simulamos el procesamiento
+      if (isDemoMode) {
+        logger.debug({ tenantId, projectId }, 'Simulando procesamiento de proyecto (modo demo)');
+        await this.sleep(500); // Simular procesamiento
+        return;
+      }
+      
+      // Obtener el proyecto específico de Supabase
+      const project = await supabaseService.getProject(tenantId, projectId);
+      
+      if (!project) {
+        logger.warn({ tenantId, projectId }, 'Proyecto no encontrado');
+        return;
+      }
+      
+      logger.info({ tenantId, projectId }, 'Proyecto encontrado, generando embedding');
+      
+      // Procesar un batch de un solo proyecto
+      await this.processBatch(tenantId, [project]);
+      
+      // Actualizar estadísticas
+      status.processedProjects += 1;
+      status.lastSync = new Date().toISOString();
+      
+      logger.info({ tenantId, projectId }, 'Proyecto procesado correctamente vía webhook');
+    } catch (error) {
+      logger.error({ error, tenantId, projectId }, 'Error procesando proyecto específico');
+      throw error;
+    }
+  }
+
   private async checkForChanges(): Promise<void> {
     try {
       if (isDemoMode) {

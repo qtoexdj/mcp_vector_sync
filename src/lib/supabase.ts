@@ -45,6 +45,30 @@ export class SupabaseService {
   }
 
   /**
+   * Obtiene un proyecto específico por su ID
+   */
+  async getProject(tenantId: string, projectId: string): Promise<Project | null> {
+    try {
+      const { data, error } = await this.client
+        .from('proyectos')
+        .select('*')
+        .eq('inmobiliaria_id', tenantId)
+        .eq('id', projectId)
+        .single();
+
+      if (error) {
+        logger.error({ error, tenantId, projectId }, 'Error al obtener proyecto específico');
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      logger.error({ error, tenantId, projectId }, 'Error en getProject');
+      throw error;
+    }
+  }
+
+  /**
    * Actualiza o crea un vector en la tabla proyecto_vector
    */
   async upsertVector(vectorData: VectorData): Promise<void> {
