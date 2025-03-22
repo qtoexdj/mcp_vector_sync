@@ -4,6 +4,9 @@ import { openaiService } from './openai.js';
 import { Project, ProjectProcessingStatus } from '../types/project.js';
 import { VectorData, VectorSyncStatus } from '../types/vector.js';
 
+// Verificar si estamos en modo demo
+const isDemoMode = process.env.DEMO_MODE === 'true';
+
 export class MonitorService {
   private isRunning: boolean = false;
   private lastCheck: Date = new Date(0);
@@ -64,6 +67,22 @@ export class MonitorService {
 
   private async checkForChanges(): Promise<void> {
     try {
+      if (isDemoMode) {
+        logger.info('Modo demo: Simulando verificación de cambios');
+        // En modo demo, usamos tenants de ejemplo
+        const demoTenants = [
+          '32b2f8de-3fdc-4618-9510-434ee9014021',
+          '7b01bc95-e70e-4fb8-8955-e1ac88dd3aac'
+        ];
+        
+        for (const tenantId of demoTenants) {
+          logger.debug({ tenantId }, 'No hay cambios para procesar (modo demo)');
+        }
+        
+        this.lastCheck = new Date();
+        return;
+      }
+      
       const tenants = await supabaseService.getActiveTenants();
       
       for (const tenantId of tenants) {
@@ -73,7 +92,11 @@ export class MonitorService {
       this.lastCheck = new Date();
     } catch (error) {
       logger.error({ error }, 'Error al verificar cambios');
-      throw error;
+      if (!isDemoMode) {
+        throw error;
+      } else {
+        logger.warn('Error ignorado en modo demo');
+      }
     }
   }
 
@@ -82,6 +105,14 @@ export class MonitorService {
     status.status = 'SYNCING';
 
     try {
+      // En modo demo, no hacemos nada real
+      if (isDemoMode) {
+        logger.debug({ tenantId }, 'No hay cambios para procesar (modo demo)');
+        status.status = 'IDLE';
+        status.lastSync = new Date().toISOString();
+        return;
+      }
+      
       // Obtener proyectos modificados
       const projects = await supabaseService.getModifiedProjects(
         tenantId,
@@ -116,7 +147,12 @@ export class MonitorService {
       logger.error({ error, tenantId }, 'Error procesando cambios del tenant');
       status.status = 'ERROR';
       status.error = error instanceof Error ? error.message : 'Error desconocido';
-      throw error;
+      
+      if (!isDemoMode) {
+        throw error;
+      } else {
+        logger.warn('Error ignorado en modo demo');
+      }
     }
   }
 
