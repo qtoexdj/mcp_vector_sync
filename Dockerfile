@@ -35,8 +35,8 @@ RUN npm ci --omit=dev
 # Copiar la aplicación compilada desde la etapa de construcción
 COPY --from=builder /app/dist ./dist
 
-# Copiar el archivo .env.example como .env para tener valores predeterminados
-COPY .env.example .env
+# Crear un archivo .env con valores predeterminados
+RUN echo "DEMO_MODE=true\nOPENAI_MODEL=text-embedding-ada-002\nMONITOR_INTERVAL=60000\nBATCH_SIZE=50\nMAX_CONCURRENT=3\nMAX_RETRIES=3\nRATE_LIMIT_PER_TENANT=100\nCONCURRENT_REQUESTS=5\nLOG_LEVEL=info" > /app/.env
 
 # Exponer puerto para MCP (opcional, principalmente para documentación)
 EXPOSE 3000
