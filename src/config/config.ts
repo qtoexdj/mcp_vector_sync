@@ -52,15 +52,19 @@ function parseNumber(value: string | undefined, defaultValue: number): number {
   return isNaN(parsed) ? defaultValue : parsed;
 }
 
+// Verificar si estamos en modo demo
+const isDemoMode = process.env.DEMO_MODE === 'true';
+
 function createConfig(): Config {
   try {
-    return configSchema.parse({
+    // Configuración con valores predeterminados para modo demo o producción
+    const config = {
       supabase: {
-        url: process.env.SUPABASE_URL,
-        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        url: process.env.SUPABASE_URL || (isDemoMode ? 'https://demo-project.supabase.co' : undefined),
+        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || (isDemoMode ? 'demo-service-role-key' : undefined),
       },
       openai: {
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY || (isDemoMode ? 'demo-openai-api-key' : undefined),
         model: process.env.OPENAI_MODEL || 'text-embedding-ada-002',
         maxRetries: parseNumber(process.env.MAX_RETRIES, 3),
       },
@@ -77,10 +81,22 @@ function createConfig(): Config {
         level: (process.env.LOG_LEVEL as any) || 'info',
         pretty: process.env.NODE_ENV === 'development',
       },
-    });
+    };
+
+    if (isDemoMode) {
+      console.warn('⚠️ Ejecutando en MODO DEMO - No se realizarán conexiones reales a Supabase u OpenAI');
+    }
+
+    return configSchema.parse(config);
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error('Error de validación en la configuración:', error.errors);
+      
+      if (isDemoMode) {
+        console.error('Asegúrate de que DEMO_MODE=true esté configurado correctamente en las variables de entorno');
+      } else {
+        console.error('Variables de entorno requeridas: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY');
+      }
     }
     throw error;
   }
