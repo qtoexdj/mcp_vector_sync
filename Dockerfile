@@ -21,7 +21,6 @@ FROM node:20-alpine AS production
 
 # Configurar variables de entorno para producción
 ENV NODE_ENV=production
-ENV DEMO_MODE=true
 
 # Establecer directorio de trabajo
 WORKDIR /app
@@ -35,8 +34,8 @@ RUN npm ci --omit=dev
 # Copiar la aplicación compilada desde la etapa de construcción
 COPY --from=builder /app/dist ./dist
 
-# Crear un archivo .env con valores predeterminados
-RUN echo "DEMO_MODE=true\nOPENAI_MODEL=text-embedding-ada-002\nMONITOR_INTERVAL=60000\nBATCH_SIZE=50\nMAX_CONCURRENT=3\nMAX_RETRIES=3\nRATE_LIMIT_PER_TENANT=100\nCONCURRENT_REQUESTS=5\nLOG_LEVEL=info" > /app/.env
+# Crear un archivo .env con valores predeterminados (sin DEMO_MODE)
+RUN echo "OPENAI_MODEL=text-embedding-ada-002\nMONITOR_INTERVAL=21600000\nBATCH_SIZE=50\nMAX_CONCURRENT=3\nMAX_RETRIES=3\nRATE_LIMIT_PER_TENANT=100\nCONCURRENT_REQUESTS=5\nLOG_LEVEL=info" > /app/.env
 
 # Exponer puerto para MCP (opcional, principalmente para documentación)
 EXPOSE 3000
