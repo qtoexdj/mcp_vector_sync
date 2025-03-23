@@ -5,13 +5,12 @@
 export interface Project {
   id: string;
   inmobiliaria_id: string;
-  nombre: string;
-  descripcion?: string;
-  caracteristicas?: Record<string, any>;
-  ubicacion?: {
-    direccion?: string;
-    comuna?: string;
-    region?: string;
+  caracteristicas?: {
+    nombre?: string;
+    valor?: string;
+    ubicacion?: string;
+    caracteristicas?: string;
+    [key: string]: any;
   };
   updated_at: string;
   created_at: string;

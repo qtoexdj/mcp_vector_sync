@@ -247,14 +247,16 @@ export class MonitorService {
   }
 
   private prepareProjectContent(project: Project): string {
+    // Obtener el objeto caracteristicas o un objeto vacío si no existe
+    const caract = project.caracteristicas || {};
+    
     // Combinar campos relevantes del proyecto para el embedding
     const content = [
-      project.nombre,
-      project.descripcion,
-      JSON.stringify(project.caracteristicas),
-      project.ubicacion?.direccion,
-      project.ubicacion?.comuna,
-      project.ubicacion?.region
+      caract.nombre,
+      caract.caracteristicas, // Este campo contiene la descripción del proyecto
+      caract.valor,
+      caract.ubicacion,
+      JSON.stringify(caract) // Incluir todas las propiedades adicionales
     ]
       .filter(Boolean)
       .join(' ');
