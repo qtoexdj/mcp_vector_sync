@@ -49,6 +49,32 @@ export class SupabaseService {
    */
   async getProject(tenantId: string, projectId: string): Promise<Project | null> {
     try {
+      // Verificar que tenemos las credenciales correctas
+      logger.info({
+        url: config.supabase.url,
+        hasServiceKey: !!config.supabase.serviceRoleKey,
+        tenantId,
+        projectId
+      }, 'Intentando obtener proyecto');
+
+      // Primero verificar si la tabla existe
+      const { data: tables, error: tableError } = await this.client
+        .from('information_schema.tables')
+        .select('table_name')
+        .eq('table_name', 'proyectos')
+        .single();
+
+      if (tableError) {
+        logger.error({ error: tableError }, 'Error verificando tabla proyectos');
+        throw new Error('Error verificando tabla proyectos: ' + tableError.message);
+      }
+
+      if (!tables) {
+        logger.error('La tabla proyectos no existe');
+        throw new Error('La tabla proyectos no existe');
+      }
+
+      // Intentar obtener el proyecto
       const { data, error } = await this.client
         .from('proyectos')
         .select('*')
@@ -57,13 +83,41 @@ export class SupabaseService {
         .single();
 
       if (error) {
-        logger.error({ error, tenantId, projectId }, 'Error al obtener proyecto específico');
+        logger.error({
+          error,
+          tenantId,
+          projectId,
+          errorCode: error.code,
+          errorMessage: error.message,
+          errorDetails: error.details
+        }, 'Error al obtener proyecto específico');
+        
+        if (error.code === '42501') {
+          throw new Error('Error de permisos: No tienes acceso a la tabla proyectos');
+        }
         throw error;
       }
 
+      if (!data) {
+        logger.warn({ tenantId, projectId }, 'Proyecto no encontrado');
+        return null;
+      }
+
+      logger.info({
+        tenantId,
+        projectId,
+        hasData: !!data
+      }, 'Proyecto obtenido correctamente');
+
       return data;
     } catch (error) {
-      logger.error({ error, tenantId, projectId }, 'Error en getProject');
+      logger.error({
+        error,
+        tenantId,
+        projectId,
+        errorMessage: error instanceof Error ? error.message : 'Error desconocido',
+        errorStack: error instanceof Error ? error.stack : undefined
+      }, 'Error en getProject');
       throw error;
     }
   }
