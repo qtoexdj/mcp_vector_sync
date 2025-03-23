@@ -57,24 +57,8 @@ export class SupabaseService {
         projectId
       }, 'Intentando obtener proyecto');
 
-      // Primero verificar si la tabla existe
-      const { data: tables, error: tableError } = await this.client
-        .from('information_schema.tables')
-        .select('table_name')
-        .eq('table_name', 'proyectos')
-        .single();
-
-      if (tableError) {
-        logger.error({ error: tableError }, 'Error verificando tabla proyectos');
-        throw new Error('Error verificando tabla proyectos: ' + tableError.message);
-      }
-
-      if (!tables) {
-        logger.error('La tabla proyectos no existe');
-        throw new Error('La tabla proyectos no existe');
-      }
-
-      // Intentar obtener el proyecto
+      // Consulta simplificada directamente a la tabla proyectos
+      // Sin hacer verificación previa de existencia de la tabla
       const { data, error } = await this.client
         .from('proyectos')
         .select('*')
@@ -89,13 +73,14 @@ export class SupabaseService {
           projectId,
           errorCode: error.code,
           errorMessage: error.message,
-          errorDetails: error.details
+          errorDetails: error.details,
+          fullError: JSON.stringify(error)
         }, 'Error al obtener proyecto específico');
         
         if (error.code === '42501') {
           throw new Error('Error de permisos: No tienes acceso a la tabla proyectos');
         }
-        throw error;
+        throw new Error(`Error al obtener proyecto: ${error.message} (Código: ${error.code})`);
       }
 
       if (!data) {
@@ -103,10 +88,13 @@ export class SupabaseService {
         return null;
       }
 
+      // Verificar la estructura de datos para depuración
       logger.info({
         tenantId,
         projectId,
-        hasData: !!data
+        hasData: !!data,
+        dataKeys: Object.keys(data),
+        caracteristicasKeys: data.caracteristicas ? Object.keys(data.caracteristicas) : 'no-caracteristicas'
       }, 'Proyecto obtenido correctamente');
 
       return data;
