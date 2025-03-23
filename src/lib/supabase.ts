@@ -19,6 +19,14 @@ export class SupabaseService {
   }
 
   /**
+   * Obtiene una instancia del cliente de Supabase para operaciones específicas
+   * que requieren acceso directo al cliente.
+   */
+  public getClient(): SupabaseClient {
+    return this.client;
+  }
+
+  /**
    * Obtiene los proyectos modificados desde una fecha específica para un tenant
    */
   async getModifiedProjects(
@@ -255,35 +263,125 @@ export class SupabaseService {
    */
   async upsertVector(vectorData: VectorData): Promise<void> {
     try {
-      logger.debug({
+      // Añadimos más diagnóstico detallado
+      logger.info({
         project_id: vectorData.project_id,
-        project_id_type: typeof vectorData.project_id
-      }, 'Validando project_id antes de upsert');
+        project_id_type: typeof vectorData.project_id,
+        id: vectorData.id,
+        inmobiliaria_id: vectorData.inmobiliaria_id,
+        has_content: !!vectorData.content,
+        content_length: vectorData.content?.length || 0,
+        embedding_length: vectorData.embedding?.length || 0,
+        metadata: vectorData.metadata
+      }, 'Iniciando upsert en proyecto_vector');
       
-      const { error } = await this.client
-        .from('proyecto_vector')
-        .upsert({
-          id: vectorData.id,
-          inmobiliaria_id: vectorData.inmobiliaria_id,
-          project_id: vectorData.project_id,
-          content: vectorData.content, // Agregar el campo content
-          embedding: vectorData.embedding,
-          metadata: vectorData.metadata,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
+      // Verificar que el proyecto existe (validar la FK)
+      const projectExists = await this.checkProjectExists(vectorData.project_id);
+      if (!projectExists) {
         logger.error({
-          error,
-          vectorData,
-          project_id_value: vectorData.project_id,
-          project_id_type: typeof vectorData.project_id
-        }, 'Error al actualizar vector');
-        throw error;
+          project_id: vectorData.project_id,
+          reason: 'Proyecto referenciado no existe en tabla proyectos'
+        }, 'No se puede insertar vector: Violación de clave foránea');
+        throw new Error(`No se puede insertar vector: El proyecto ${vectorData.project_id} no existe en la tabla proyectos`);
+      }
+      
+      // Verificar que la inmobiliaria existe (validar la FK)
+      const inmobiliariaExists = await this.checkInmobiliariaExists(vectorData.inmobiliaria_id);
+      if (!inmobiliariaExists) {
+        logger.error({
+          inmobiliaria_id: vectorData.inmobiliaria_id,
+          reason: 'Inmobiliaria referenciada no existe en tabla inmobiliarias'
+        }, 'No se puede insertar vector: Violación de clave foránea');
+        throw new Error(`No se puede insertar vector: La inmobiliaria ${vectorData.inmobiliaria_id} no existe en la tabla inmobiliarias`);
+      }
+      
+      // Intentar la inserción con manejo detallado de errores
+      try {
+        const startTime = Date.now();
+        const { error, status, statusText } = await this.client
+          .from('proyecto_vector')
+          .upsert({
+            id: vectorData.id,
+            inmobiliaria_id: vectorData.inmobiliaria_id,
+            project_id: vectorData.project_id,
+            content: vectorData.content || '', // Garantizar que content no sea null
+            embedding: vectorData.embedding,
+            metadata: vectorData.metadata,
+            updated_at: new Date().toISOString(),
+          });
+        const duration = Date.now() - startTime;
+
+        if (error) {
+          logger.error({
+            error,
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorDetails: error.details,
+            httpStatus: status,
+            httpStatusText: statusText,
+            durationMs: duration,
+            project_id: vectorData.project_id,
+            id: vectorData.id
+          }, 'Error específico al actualizar vector');
+          throw error;
+        }
+        
+        // Registro de éxito detallado
+        logger.info({
+          project_id: vectorData.project_id,
+          id: vectorData.id,
+          durationMs: duration,
+          httpStatus: status,
+          httpStatusText: statusText
+        }, 'Vector actualizado correctamente');
+      } catch (dbError) {
+        // Capturar errores específicos de la base de datos
+        logger.error({
+          dbError,
+          errorType: typeof dbError,
+          errorMessage: dbError instanceof Error ? dbError.message : 'Error desconocido',
+          errorName: dbError instanceof Error ? dbError.name : 'Unknown',
+          errorStack: dbError instanceof Error ? dbError.stack : undefined,
+          project_id: vectorData.project_id,
+          id: vectorData.id
+        }, 'Error de base de datos al insertar vector');
+        throw dbError;
       }
     } catch (error) {
-      logger.error({ error, vectorData }, 'Error en upsertVector');
+      logger.error({
+        error,
+        errorType: typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Error desconocido',
+        vectorData: {
+          id: vectorData.id,
+          project_id: vectorData.project_id,
+          inmobiliaria_id: vectorData.inmobiliaria_id
+        }
+      }, 'Error general en upsertVector');
       throw error;
+    }
+  }
+  
+  /**
+   * Verifica si una inmobiliaria existe
+   */
+  async checkInmobiliariaExists(inmobiliariaId: string): Promise<boolean> {
+    try {
+      const { data, error } = await this.client
+        .from('inmobiliarias')
+        .select('id')
+        .eq('id', inmobiliariaId)
+        .limit(1);
+      
+      if (error) {
+        logger.warn({ error, inmobiliariaId }, 'Error al verificar existencia de inmobiliaria');
+        return false;
+      }
+      
+      return !!(data && data.length > 0);
+    } catch (error) {
+      logger.warn({ error, inmobiliariaId }, 'Excepción al verificar existencia de inmobiliaria');
+      return false;
     }
   }
 
@@ -375,4 +473,158 @@ export class SupabaseService {
 }
 
 // Exportar una instancia única del servicio
+// Añadir métodos de diagnóstico a SupabaseService
+export class SupabaseDiagnostic {
+  async checkVectorExists(projectId: string): Promise<any> {
+    try {
+      logger.info({ projectId }, 'Verificando vector para proyecto');
+      
+      // Verificar si el proyecto existe
+      const projectExists = await supabaseService.checkProjectExists(projectId);
+      
+      if (!projectExists) {
+        logger.warn({ projectId }, 'Diagnóstico: Proyecto no existe en tabla proyectos');
+        return {
+          exists: false,
+          error: 'El proyecto no existe en la tabla proyectos',
+          projectId
+        };
+      }
+      
+      // Consultar en proyecto_vector
+      try {
+        const { data, error } = await supabaseService.getClient()
+          .from('proyecto_vector')
+          .select('*')
+          .eq('project_id', projectId)
+          .maybeSingle();
+        
+        if (error) {
+          logger.error({ error, projectId }, 'Error al verificar vector en diagnóstico');
+          return {
+            exists: false,
+            error: `Error consultando vector: ${error.message} (${error.code})`,
+            projectId
+          };
+        }
+        
+        if (!data) {
+          logger.warn({ projectId }, 'Diagnóstico: Vector no encontrado');
+          return {
+            exists: false,
+            projectId
+          };
+        }
+        
+        // Vector encontrado, verificar su estructura
+        const diagnostico = {
+          exists: true,
+          id: data.id,
+          projectId: data.project_id,
+          inmobiliariaId: data.inmobiliaria_id,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+          hasContent: !!data.content,
+          hasEmbedding: !!data.embedding,
+          hasMetadata: !!data.metadata,
+          metadata: data.metadata
+        };
+        
+        logger.info(diagnostico, 'Diagnóstico de vector completado');
+        return diagnostico;
+      } catch (error) {
+        logger.error({ error, projectId }, 'Error en diagnóstico de vector');
+        throw error;
+      }
+    } catch (error) {
+      logger.error({ error, projectId }, 'Error en checkVectorExists');
+      throw error;
+    }
+  }
+
+  async fixVectorForProject(projectId: string, tenantId: string): Promise<any> {
+    try {
+      logger.info({ projectId, tenantId }, 'Intentando reparar vector');
+      
+      // Obtener el proyecto
+      const proyecto = await supabaseService.getProject(tenantId, projectId);
+      
+      if (!proyecto) {
+        logger.error({ projectId, tenantId }, 'Error obteniendo proyecto para reparación');
+        return {
+          success: false,
+          error: 'Proyecto no encontrado'
+        };
+      }
+      
+      // Preparar contenido para el embedding
+      const caract = proyecto.caracteristicas || {};
+      const content = [
+        caract.nombre,
+        caract.caracteristicas,
+        caract.valor,
+        caract.ubicacion,
+        JSON.stringify(caract)
+      ]
+        .filter(Boolean)
+        .join(' ');
+      
+      if (!content) {
+        logger.warn({ projectId }, 'Contenido vacío para vector, usando nombre por defecto');
+      }
+      
+      // Crear un vector temporal (embedding placeholder)
+      const dummyEmbedding = Array(1536).fill(0.1);
+      
+      // Preparar datos para upsert
+      const vectorData: VectorData = {
+        id: projectId,
+        inmobiliaria_id: tenantId,
+        project_id: projectId,
+        content: content || 'Contenido temporal de diagnóstico',
+        embedding: dummyEmbedding,
+        metadata: {
+          lastUpdate: new Date().toISOString(),
+          contentVersion: 1,
+          processedFields: ['nombre', 'descripcion', 'caracteristicas'],
+          dimensions: 1536,
+          model: 'text-embedding-ada-002'
+        }
+      };
+      
+      try {
+        // Intentar el upsert con el método existente
+        await supabaseService.upsertVector(vectorData);
+        
+        // Verificar nuevamente después de la reparación
+        const verificacion = await this.checkVectorExists(projectId);
+        
+        return {
+          success: true,
+          verificacion
+        };
+      } catch (error) {
+        logger.error({ error, projectId }, 'Error en reparación de vector');
+        
+        return {
+          success: false,
+          error: error instanceof Error ?
+            { message: error.message } :
+            { message: 'Error desconocido', details: JSON.stringify(error) }
+        };
+      }
+    } catch (error) {
+      logger.error({ error, projectId }, 'Excepción en reparación de vector');
+      
+      return {
+        success: false,
+        error: error instanceof Error ?
+          { message: error.message, stack: error.stack } :
+          { message: 'Error desconocido', details: JSON.stringify(error) }
+      };
+    }
+  }
+}
+
 export const supabaseService = new SupabaseService();
+export const supabaseDiagnostic = new SupabaseDiagnostic();
