@@ -83,6 +83,33 @@ export class MonitorService {
         return;
       }
       
+      // Verificación alternativa de existencia del proyecto (método simplificado)
+      let projectExists = false;
+      try {
+        // Utilizar el método checkProjectExists que acabamos de añadir a SupabaseService
+        projectExists = await supabaseService.checkProjectExists(projectId);
+        
+        if (projectExists) {
+          logger.info({
+            tenantId,
+            projectId,
+            checkMethod: 'simplified-check',
+          }, 'Verificación simple confirma que el proyecto existe');
+        } else {
+          logger.warn({
+            tenantId,
+            projectId
+          }, 'Verificación simple no encontró el proyecto');
+        }
+      } catch (checkError) {
+        logger.warn({
+          checkError,
+          tenantId,
+          projectId,
+          errorMessage: checkError instanceof Error ? checkError.message : 'Error desconocido'
+        }, 'Error en verificación alternativa');
+      }
+      
       // Obtener el proyecto específico de Supabase
       // Utiliza el getProject mejorado con reintentos para manejar condiciones de carrera
       const project = await supabaseService.getProject(tenantId, projectId, 5); // Aumentamos a 5 reintentos
@@ -91,8 +118,18 @@ export class MonitorService {
         logger.warn({
           tenantId,
           projectId,
-          elapsedMs: Date.now() - startTime
+          elapsedMs: Date.now() - startTime,
+          simpleCheckFoundProject: projectExists
         }, 'Proyecto no encontrado después de todos los reintentos');
+        
+        // Si la verificación simple encontró el proyecto pero getProject falló, hay un problema con permisos o formato
+        if (projectExists) {
+          logger.error({
+            tenantId,
+            projectId,
+            issue: 'Inconsistencia en la verificación'
+          }, 'La verificación simple encontró el proyecto pero getProject no pudo recuperarlo');
+        }
         
         // Actualizar estadísticas de fallos
         status.failedProjects += 1;

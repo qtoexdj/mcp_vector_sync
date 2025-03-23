@@ -83,9 +83,23 @@ export function startHealthServer(port = 3000) {
             logger.info({
               tenantId: data.inmobiliaria_id,
               projectId: data.project_id,
-              event: data.event || 'INSERT/UPDATE'
+              event: data.event || 'INSERT/UPDATE',
+              fullData: data
             }, 'Iniciando procesamiento de proyecto por webhook');
             
+            // Retraso inicial para inserciones nuevas - permitir que la transacción se complete
+            if (data.event === 'INSERT') {
+              const delayTime = 2000; // 2 segundos para inserciones nuevas
+              logger.info({
+                tenantId: data.inmobiliaria_id,
+                projectId: data.project_id,
+                delayMs: delayTime
+              }, 'Webhook para INSERT: aplicando retraso inicial para permitir que se complete la transacción');
+              
+              await new Promise(resolve => setTimeout(resolve, delayTime));
+            }
+            
+            // Verificar que el proyecto exista usando múltiples enfoques
             await monitorService.processProject(data.inmobiliaria_id, data.project_id);
             
             clearTimeout(timeout);
