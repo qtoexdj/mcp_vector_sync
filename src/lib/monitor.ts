@@ -70,6 +70,7 @@ export class MonitorService {
    * Este método es utilizado cuando se recibe una notificación via webhook
    */
   async processProject(tenantId: string, projectId: string): Promise<void> {
+    const startTime = Date.now();
     logger.info({ tenantId, projectId }, 'Procesando proyecto específico por webhook');
     
     try {
@@ -83,14 +84,29 @@ export class MonitorService {
       }
       
       // Obtener el proyecto específico de Supabase
-      const project = await supabaseService.getProject(tenantId, projectId);
+      // Utiliza el getProject mejorado con reintentos para manejar condiciones de carrera
+      const project = await supabaseService.getProject(tenantId, projectId, 5); // Aumentamos a 5 reintentos
       
       if (!project) {
-        logger.warn({ tenantId, projectId }, 'Proyecto no encontrado');
+        logger.warn({
+          tenantId,
+          projectId,
+          elapsedMs: Date.now() - startTime
+        }, 'Proyecto no encontrado después de todos los reintentos');
+        
+        // Actualizar estadísticas de fallos
+        status.failedProjects += 1;
+        status.error = `Proyecto ${projectId} no encontrado después de múltiples intentos`;
         return;
       }
       
-      logger.info({ tenantId, projectId }, 'Proyecto encontrado, generando embedding');
+      logger.info({
+        tenantId,
+        projectId,
+        projectProps: Object.keys(project),
+        hasCaracteristicas: !!project.caracteristicas,
+        elapsedMs: Date.now() - startTime
+      }, 'Proyecto encontrado, generando embedding');
       
       // Procesar un batch de un solo proyecto
       await this.processBatch(tenantId, [project]);
@@ -99,9 +115,38 @@ export class MonitorService {
       status.processedProjects += 1;
       status.lastSync = new Date().toISOString();
       
-      logger.info({ tenantId, projectId }, 'Proyecto procesado correctamente vía webhook');
+      const processingTime = Date.now() - startTime;
+      logger.info({
+        tenantId,
+        projectId,
+        processingTimeMs: processingTime
+      }, 'Proyecto procesado correctamente vía webhook');
+      
+      // Actualizar información de rendimiento
+      if (status.performance.averageProcessingTime === 0) {
+        status.performance.averageProcessingTime = processingTime;
+      } else {
+        // Calcular un promedio móvil
+        status.performance.averageProcessingTime =
+          (status.performance.averageProcessingTime * 0.7) + (processingTime * 0.3);
+      }
     } catch (error) {
-      logger.error({ error, tenantId, projectId }, 'Error procesando proyecto específico');
+      const processingTime = Date.now() - startTime;
+      logger.error({
+        error,
+        tenantId,
+        projectId,
+        processingTimeMs: processingTime,
+        errorMessage: error instanceof Error ? error.message : 'Error desconocido',
+        errorStack: error instanceof Error ? error.stack : undefined
+      }, 'Error procesando proyecto específico');
+      
+      // Actualizar estadísticas de error
+      const status = this.getOrCreateStatus(tenantId);
+      status.failedProjects += 1;
+      status.error = error instanceof Error ? error.message : 'Error desconocido';
+      status.status = 'ERROR';
+      
       throw error;
     }
   }
@@ -247,14 +292,16 @@ export class MonitorService {
   }
 
   private prepareProjectContent(project: Project): string {
+    // Obtener el objeto caracteristicas o un objeto vacío si no existe
+    const caract = project.caracteristicas || {};
+    
     // Combinar campos relevantes del proyecto para el embedding
     const content = [
-      project.nombre,
-      project.descripcion,
-      JSON.stringify(project.caracteristicas),
-      project.ubicacion?.direccion,
-      project.ubicacion?.comuna,
-      project.ubicacion?.region
+      caract.nombre,
+      caract.caracteristicas, // Este campo contiene la descripción del proyecto
+      caract.valor,
+      caract.ubicacion,
+      JSON.stringify(caract) // Incluir todas las propiedades adicionales
     ]
       .filter(Boolean)
       .join(' ');

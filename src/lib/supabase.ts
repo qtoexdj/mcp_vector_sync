@@ -46,26 +46,127 @@ export class SupabaseService {
 
   /**
    * Obtiene un proyecto específico por su ID
+   * Implementa reintentos para manejar condiciones de carrera con inserciones nuevas
    */
-  async getProject(tenantId: string, projectId: string): Promise<Project | null> {
-    try {
-      const { data, error } = await this.client
-        .from('proyectos')
-        .select('*')
-        .eq('inmobiliaria_id', tenantId)
-        .eq('id', projectId)
-        .single();
+  async getProject(tenantId: string, projectId: string, maxRetries = 3): Promise<Project | null> {
+    // Usar backoff exponencial para los reintentos
+    const getBackoffTime = (attempt: number) => Math.min(Math.pow(2, attempt) * 300, 5000);
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Verificar que tenemos las credenciales correctas
+        logger.info({
+          url: config.supabase.url,
+          hasServiceKey: !!config.supabase.serviceRoleKey,
+          tenantId,
+          projectId,
+          attempt
+        }, 'Intentando obtener proyecto');
 
-      if (error) {
-        logger.error({ error, tenantId, projectId }, 'Error al obtener proyecto específico');
-        throw error;
+        // Consulta simplificada directamente a la tabla proyectos
+        const { data, error } = await this.client
+          .from('proyectos')
+          .select('*')
+          .eq('inmobiliaria_id', tenantId)
+          .eq('id', projectId)
+          .single();
+
+        if (error) {
+          // Si estamos en el último intento, tratarlo como un error fatal
+          if (attempt === maxRetries) {
+            logger.error({
+              error,
+              tenantId,
+              projectId,
+              errorCode: error.code,
+              errorMessage: error.message,
+              errorDetails: error.details,
+              fullError: JSON.stringify(error),
+              attempt,
+              maxRetries
+            }, 'Error al obtener proyecto específico después de todos los reintentos');
+            
+            if (error.code === '42501') {
+              throw new Error('Error de permisos: No tienes acceso a la tabla proyectos');
+            }
+            throw new Error(`Error al obtener proyecto: ${error.message} (Código: ${error.code})`);
+          }
+          
+          // Si no es el último intento, esperar y reintentar
+          logger.warn({
+            errorCode: error.code,
+            errorMessage: error.message,
+            tenantId,
+            projectId,
+            attempt,
+            nextAttemptIn: getBackoffTime(attempt)
+          }, 'Error al obtener proyecto, reintentando después de backoff');
+          
+          await new Promise(resolve => setTimeout(resolve, getBackoffTime(attempt)));
+          continue;
+        }
+
+        if (!data) {
+          // Si es el último intento y no hay datos, retornar null
+          if (attempt === maxRetries) {
+            logger.warn({ tenantId, projectId, attempt, maxRetries }, 'Proyecto no encontrado después de todos los reintentos');
+            return null;
+          }
+          
+          // Si no es el último intento, esperar y reintentar
+          logger.warn({
+            tenantId,
+            projectId,
+            attempt,
+            nextAttemptIn: getBackoffTime(attempt)
+          }, 'Proyecto no encontrado, reintentando después de backoff');
+          
+          await new Promise(resolve => setTimeout(resolve, getBackoffTime(attempt)));
+          continue;
+        }
+
+        // Proyecto obtenido correctamente
+        logger.info({
+          tenantId,
+          projectId,
+          attempt,
+          hasData: !!data,
+          dataKeys: Object.keys(data),
+          caracteristicasKeys: data.caracteristicas ? Object.keys(data.caracteristicas) : 'no-caracteristicas'
+        }, 'Proyecto obtenido correctamente');
+
+        return data;
+      } catch (error) {
+        // Si es el último intento, propagar el error
+        if (attempt === maxRetries) {
+          logger.error({
+            error,
+            tenantId,
+            projectId,
+            errorMessage: error instanceof Error ? error.message : 'Error desconocido',
+            errorStack: error instanceof Error ? error.stack : undefined,
+            attempt,
+            maxRetries
+          }, 'Error en getProject después de todos los reintentos');
+          throw error;
+        }
+        
+        // Si no es el último intento, esperar y reintentar
+        logger.warn({
+          error,
+          tenantId,
+          projectId,
+          attempt,
+          nextAttemptIn: getBackoffTime(attempt)
+        }, 'Error en getProject, reintentando después de backoff');
+        
+        await new Promise(resolve => setTimeout(resolve, getBackoffTime(attempt)));
       }
-
-      return data;
-    } catch (error) {
-      logger.error({ error, tenantId, projectId }, 'Error en getProject');
-      throw error;
     }
+
+    // Este punto nunca debería alcanzarse debido a los returns y throws dentro del bucle
+    logger.error({ tenantId, projectId }, 'Error inesperado en getProject');
+    throw new Error('Error inesperado en getProject');
   }
 
   /**
