@@ -58,14 +58,19 @@ const isDemoMode = process.env.DEMO_MODE === 'true';
 
 function createConfig(): Config {
   try {
+    // Verificar que las variables requeridas estén presentes y no vacías
+    if (!isDemoMode && (!process.env.SUPABASE_URL?.trim() || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || !process.env.OPENAI_API_KEY?.trim())) {
+      throw new Error('Variables de entorno requeridas no están configuradas. Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y OPENAI_API_KEY, o active el modo DEMO con DEMO_MODE=true');
+    }
+
     // Configuración con valores predeterminados para modo demo o producción
     const config = {
       supabase: {
-        url: process.env.SUPABASE_URL || (isDemoMode ? 'https://demo-project.supabase.co' : undefined),
-        serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || (isDemoMode ? 'demo-service-role-key' : undefined),
+        url: isDemoMode ? 'https://demo-project.supabase.co' : process.env.SUPABASE_URL,
+        serviceRoleKey: isDemoMode ? 'demo-service-role-key' : process.env.SUPABASE_SERVICE_ROLE_KEY,
       },
       openai: {
-        apiKey: process.env.OPENAI_API_KEY || (isDemoMode ? 'demo-openai-api-key' : undefined),
+        apiKey: isDemoMode ? 'demo-openai-api-key' : process.env.OPENAI_API_KEY,
         model: process.env.OPENAI_MODEL || 'text-embedding-ada-002',
         maxRetries: parseNumber(process.env.MAX_RETRIES, 3),
       },
