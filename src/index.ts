@@ -179,7 +179,7 @@ process.on('SIGTERM', async () => {
 // Conectar servidor
 server.connect(transport).then(() => {
   logger.info(
-    { 
+    {
       config: {
         monitor: {
           interval: config.monitor.interval,
@@ -187,13 +187,12 @@ server.connect(transport).then(() => {
         }
       }
     },
-    "Servidor MCP Vector Sync iniciado"
+    "Servidor MCP Vector Sync iniciado en modo pure-event-driven (sin polling periódico)"
   );
   
-  // Iniciar monitor automáticamente
-  monitorService.start().catch((error) => {
-    logger.error({ error }, "Error al iniciar monitor");
-  });
+  // El monitor periódico ha sido desactivado para utilizar un enfoque 100% basado en eventos
+  // Solo se procesarán proyectos cuando se reciban webhooks
+  
 }).catch((error) => {
   logger.error({ error }, "Error al iniciar servidor MCP");
   process.exit(1);

@@ -1,20 +1,32 @@
 # MCP Vector Sync
 
-Servicio MCP para sincronización automática de vectores de búsqueda multi-tenant con Supabase.
+Servicio MCP para sincronización automática de vectores de búsqueda multi-tenant con Supabase mediante un sistema basado 100% en eventos.
 
 ## Descripción
 
-Este servicio monitorea cambios en la tabla `proyectos` de Supabase, genera embeddings vectoriales utilizando OpenAI, y actualiza la tabla `proyecto_vector` manteniendo una búsqueda vectorial eficiente para cada tenant. Implementa el protocolo MCP (Model Context Protocol) para exponer herramientas y recursos de sincronización.
+Este servicio recibe notificaciones en tiempo real de Supabase cuando hay cambios en la tabla `proyectos`, genera embeddings vectoriales utilizando OpenAI, y actualiza la tabla `proyecto_vector` manteniendo una búsqueda vectorial eficiente para cada tenant. Implementa el protocolo MCP (Model Context Protocol) para exponer herramientas y recursos de sincronización.
 
 ## Características
 
-- Monitoreo automático de cambios en proyectos por tenant
+- Sistema basado 100% en eventos (webhooks directos desde Supabase)
 - Generación de embeddings con OpenAI
+- Procesamiento inmediato de cambios en proyectos
+- Sistema de reintentos automáticos con backoff exponencial
+- Registro de auditoría para debugging y monitoreo
 - Sincronización multi-tenant con aislamiento completo de datos
 - Exposición de herramientas MCP para control y monitoreo
 - Servidor de health check para supervisión
 - Containerizado con Docker para fácil despliegue
 - Compatible con Railway para despliegue en producción
+
+## Arquitectura de eventos
+
+El sistema utiliza una arquitectura basada completamente en eventos:
+
+1. **Trigger en Supabase**: Cuando se crea o modifica un proyecto, un trigger envía un webhook directamente al servicio
+2. **Procesamiento con retraso controlado**: Para nuevas inserciones, se aplica un retraso de 20 segundos para evitar condiciones de carrera
+3. **Reintentos automáticos**: En caso de fallos, el sistema reintenta hasta 3 veces con backoff exponencial (2, 4, 8 segundos)
+4. **Registro de auditoría**: Todos los intentos se registran en la tabla `webhook_logs` para debugging y monitoreo
 
 ## Requisitos
 
@@ -35,12 +47,6 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 # OpenAI
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=text-embedding-ada-002
-
-# Monitor
-MONITOR_INTERVAL=60000
-BATCH_SIZE=50
-MAX_CONCURRENT=3
-MAX_RETRIES=3
 
 # Rate Limiting
 RATE_LIMIT_PER_TENANT=100
@@ -118,6 +124,24 @@ Una vez desplegado, puedes monitorear el servicio usando el endpoint `/health`:
 https://tu-proyecto.railway.app/health
 ```
 
+## Endpoint de Webhook
+
+El sistema recibe webhooks en el siguiente endpoint:
+
+```
+https://tu-proyecto.railway.app/webhook/project-update
+```
+
+El payload esperado para el webhook debe incluir:
+```json
+{
+  "inmobiliaria_id": "uuid-del-tenant",
+  "project_id": "uuid-del-proyecto",
+  "event": "INSERT|UPDATE", 
+  "timestamp": "2025-03-22T17:45:00Z"
+}
+```
+
 ## Herramientas MCP
 
 El servicio expone las siguientes herramientas MCP:
@@ -130,6 +154,7 @@ El servicio expone las siguientes herramientas MCP:
 
 - Si hay errores con la generación de embeddings, verifica tu API key de OpenAI
 - Para problemas de conexión con Supabase, asegúrate de que la URL y la service key sean correctas
+- Revisa los logs en `webhook_logs` para diagnosticar problemas de webhooks
 - Logs detallados se pueden habilitar con `LOG_LEVEL=debug`
 
 ## Mantenimiento
@@ -141,8 +166,10 @@ Para actualizar el servicio:
 3. Haz commit y push a GitHub
 4. Railway detectará los cambios y redesplegará automáticamente
 
-## Notas de seguridad
+## Consideraciones de seguridad
 
 - Nunca incluyas credenciales o API keys en el código fuente
 - Utiliza variables de entorno para toda la configuración sensible
 - Asegúrate de que la service role key de Supabase tenga solo los permisos necesarios
+- En entornos de producción, considera implementar autenticación para los webhooks
+- Configura límites de tasa (rate limiting) para proteger contra ataques DoS

@@ -44,10 +44,6 @@ Este documento detalla el plan paso a paso para desplegar el servicio MCP Vector
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    OPENAI_API_KEY=your-openai-api-key
    OPENAI_MODEL=text-embedding-ada-002
-   MONITOR_INTERVAL=60000
-   BATCH_SIZE=50
-   MAX_CONCURRENT=3
-   MAX_RETRIES=3
    RATE_LIMIT_PER_TENANT=100
    CONCURRENT_REQUESTS=5
    LOG_LEVEL=info
@@ -84,6 +80,7 @@ Este documento detalla el plan paso a paso para desplegar el servicio MCP Vector
    - Revisar logs diariamente los primeros días
    - Verificar uso de recursos (memoria, CPU)
    - Comprobar funcionamiento correcto del health check
+   - Revisar la tabla `webhook_logs` en Supabase para auditoría
 
 3. **Respaldo**:
    - Asegurarse de que el código siempre esté respaldado en GitHub
@@ -93,7 +90,7 @@ Este documento detalla el plan paso a paso para desplegar el servicio MCP Vector
 
 1. **Evaluación de rendimiento**:
    - Después de 1-2 semanas, evaluar el rendimiento y uso de recursos
-   - Ajustar variables de entorno si es necesario (BATCH_SIZE, MAX_CONCURRENT)
+   - Analizar los logs de webhooks para detectar posibles fallos o patrones
 
 2. **Escalamiento** (si es necesario):
    - Aumentar recursos en Railway si hay problemas de rendimiento

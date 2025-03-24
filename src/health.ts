@@ -89,12 +89,12 @@ export function startHealthServer(port = 3000) {
             
             // Retraso inicial para inserciones nuevas - permitir que la transacción se complete
             if (data.event === 'INSERT') {
-              const delayTime = 2000; // 2 segundos para inserciones nuevas
+              const delayTime = 20000; // 20 segundos para inserciones nuevas
               logger.info({
                 tenantId: data.inmobiliaria_id,
                 projectId: data.project_id,
                 delayMs: delayTime
-              }, 'Webhook para INSERT: aplicando retraso inicial para permitir que se complete la transacción');
+              }, 'Webhook para INSERT: aplicando retraso de 20 segundos para garantizar consistencia');
               
               await new Promise(resolve => setTimeout(resolve, delayTime));
             }
