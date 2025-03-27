@@ -17,7 +17,7 @@ const configSchema = z.object({
   // OpenAI
   openai: z.object({
     apiKey: z.string().min(1, 'OpenAI API key es requerida'),
-    model: z.string().default('text-embedding-3-large'),
+    model: z.string().default('text-embedding-3-small'),
     maxRetries: z.number().int().positive().default(3),
   }),
 
@@ -71,7 +71,7 @@ function createConfig(): Config {
       },
       openai: {
         apiKey: isDemoMode ? 'demo-openai-api-key' : process.env.OPENAI_API_KEY,
-        model: process.env.OPENAI_MODEL || 'text-embedding-3-large',
+        model: process.env.OPENAI_MODEL || 'text-embedding-3-small',
         maxRetries: parseNumber(process.env.MAX_RETRIES, 3),
       },
       monitor: {
