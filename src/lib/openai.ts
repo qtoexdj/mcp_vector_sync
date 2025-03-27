@@ -21,7 +21,7 @@ export class OpenAIService {
     for (let attempt = 0; attempt < config.openai.maxRetries; attempt++) {
       try {
         const response = await this.client.embeddings.create({
-          model: config.openai.model,
+          model: process.env.OPENAI_MODEL || 'text-embedding-3-small',
           input: truncatedContent,
         });
 
@@ -29,7 +29,7 @@ export class OpenAIService {
         logger.info({
           originalDimensions: originalEmbedding.length,
           targetDimensions: VECTOR_DIMENSIONS,
-          model: config.openai.model
+          model: process.env.OPENAI_MODEL || 'text-embedding-3-small'
         }, 'Redimensionando embedding al tamaño requerido');
 
         return this.resizeVector(originalEmbedding, VECTOR_DIMENSIONS);

@@ -305,7 +305,7 @@ export class MonitorService {
               contentVersion: 1,
               processedFields: ['nombre', 'descripcion', 'caracteristicas'],
               dimensions: embedding.length,
-              model: config.openai.model
+              model: process.env.OPENAI_MODEL || 'text-embedding-3-small'
             }
           };
 
