@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { config, logger, MAX_CONTENT_LENGTH } from '../config/config.js';
+import { config, logger, MAX_CONTENT_LENGTH, VECTOR_DIMENSIONS } from '../config/config.js';
 
 export class OpenAIService {
   private client: OpenAI;
@@ -25,7 +25,14 @@ export class OpenAIService {
           input: truncatedContent,
         });
 
-        return response.data[0].embedding;
+        const originalEmbedding = response.data[0].embedding;
+        logger.info({
+          originalDimensions: originalEmbedding.length,
+          targetDimensions: VECTOR_DIMENSIONS,
+          model: config.openai.model
+        }, 'Redimensionando embedding al tamaño requerido');
+
+        return this.resizeVector(originalEmbedding, VECTOR_DIMENSIONS);
       } catch (error: any) {
         if (attempt === config.openai.maxRetries - 1) {
           logger.error(
@@ -97,6 +104,25 @@ export class OpenAIService {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Redimensiona un vector al tamaño deseado
+   * Si el vector es más grande, se trunca
+   * Si es más pequeño, se rellena con ceros
+   */
+  private resizeVector(vector: number[], targetSize: number): number[] {
+    if (vector.length === targetSize) {
+      return vector;
+    }
+
+    if (vector.length > targetSize) {
+      // Si el vector es más grande, truncarlo
+      return vector.slice(0, targetSize);
+    } else {
+      // Si el vector es más pequeño, rellenar con ceros
+      return [...vector, ...new Array(targetSize - vector.length).fill(0)];
+    }
   }
 }
 
